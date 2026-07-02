@@ -199,7 +199,13 @@ export async function generateReport(data: ReportData, supabase?: any): Promise<
   sections.push(sectionTitle('B. Absen Selfie & Verifikasi Lokasi'))
   if (attendance) {
     sections.push(bodyText(`Perangkat: ${attendance.device_type === 'mobile' ? 'HP/Tablet' : 'Laptop'}`))
-    sections.push(bodyText(`Lokasi GPS: ${attendance.latitude.toFixed(6)}, ${attendance.longitude.toFixed(6)}`))
+    sections.push(bodyText(`📍 Lokasi SPV: ${attendance.latitude.toFixed(6)}, ${attendance.longitude.toFixed(6)}`))
+    if (visit.store.latitude && visit.store.longitude) {
+      const dist = Math.round(haversine(attendance.latitude, attendance.longitude, visit.store.latitude, visit.store.longitude))
+      sections.push(bodyText(`📍 Lokasi Toko: ${visit.store.latitude.toFixed(6)}, ${visit.store.longitude.toFixed(6)}`))
+      sections.push(bodyText(`📏 Jarak: ${dist} meter`))
+      sections.push(bodyText(`🔗 Buka di Google Maps: https://maps.google.com/maps?q=${attendance.latitude},${attendance.longitude}`))
+    }
     sections.push(bodyText(`Status Lokasi: ${attendance.is_location_match ? 'Sesuai dengan toko (≤80m)' : 'Tidak sesuai'}`))
     sections.push(...await addPhoto('Foto Selfie:', attendance.selfie_photo_url, 300, 250, supabase))
   } else {
@@ -492,4 +498,12 @@ function calcStockSepScore(s: StockSeparation | null): number {
   const imbalanceScore = (s.imbalance_percentage !== null && s.imbalance_percentage < 10) ? 5 : 0
   const oversoldScore = (s.oversold_items !== null && s.oversold_items < 5) ? 4 : 0
   return statusScore + imbalanceScore + oversoldScore
+}
+
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }

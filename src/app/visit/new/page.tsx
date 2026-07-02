@@ -106,7 +106,7 @@ interface DenomInput { value: number; quantity: number; type: 'coin' | 'bill' }
 interface FormData {
   storeId: string; visitDate: string
   selfiePhoto: File | string | null; gpsLatitude: number | null; gpsLongitude: number | null; gpsAccuracy: number | null
-  locationVerified: boolean; locationDistance: number | null; deviceType: string
+  locationVerified: boolean; locationConfirmed: boolean; locationDistance: number | null; deviceType: string
   initialCapital: string; pettyCashBalance: string
   denominations: DenomInput[]
   hasPendingClaim: boolean | null
@@ -133,7 +133,7 @@ function emptyForm(): FormData {
   return {
     storeId: '', visitDate: new Date().toISOString().split('T')[0],
     selfiePhoto: null, gpsLatitude: null, gpsLongitude: null, gpsAccuracy: null,
-    locationVerified: false, locationDistance: null, deviceType: 'desktop',
+    locationVerified: false, locationConfirmed: false, locationDistance: null, deviceType: 'desktop',
     initialCapital: '', pettyCashBalance: '',
     denominations: DENOMINATIONS.map(d => ({ value: d.value, quantity: 0, type: d.type as 'coin' | 'bill' })),
     hasPendingClaim: null,
@@ -271,11 +271,13 @@ function VisitForm() {
             locationVerified: verified,
             locationDistance: Math.round(dist),
           }))
-          if (!verified) {
-            setGpsError(`Lokasi Anda ${Math.round(dist)}m dari toko. Maksimal 80m.`)
-          }
         } else {
-          setGpsError('Toko belum memiliki koordinat. Hubungi Manager untuk setting.')
+          setData(prev => ({
+            ...prev,
+            gpsLatitude: pos.coords.latitude,
+            gpsLongitude: pos.coords.longitude,
+            gpsAccuracy: pos.coords.accuracy,
+          }))
         }
         setGpsLoading(false)
       },
@@ -290,7 +292,7 @@ function VisitForm() {
   const progress = (step / STEPS.length) * 100
 
   const canProceed = () => {
-    if (step === 1) return data.storeId && data.selfiePhoto && (data.locationVerified || userRole === 'manager')
+    if (step === 1) return data.storeId && data.selfiePhoto && (data.locationVerified || data.locationConfirmed || userRole === 'manager')
     if (step === 2) {
       const modal = parseInt(data.initialCapital) || 0
       const petty = parseInt(data.pettyCashBalance) || 0
@@ -722,9 +724,9 @@ function VisitForm() {
 
               <div>
                 <Label className="text-emerald-800 flex items-center gap-1.5 mb-2">
-                  <MapPin className="h-4 w-4 text-emerald-600" /> Verifikasi GPS (maks 80m dari toko)
+                  <MapPin className="h-4 w-4 text-emerald-600" /> 📍 Lokasi GPS
                 </Label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -739,12 +741,27 @@ function VisitForm() {
                       <Check className="h-3 w-3" /> {data.locationDistance}m — Sesuai
                     </span>
                   )}
-                  {data.locationDistance !== null && !data.locationVerified && (
-                    <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
-                      <AlertTriangle className="h-3 w-3" /> {data.locationDistance}m — Terlalu jauh
+                  {data.locationDistance !== null && !data.locationVerified && !data.locationConfirmed && (
+                    <span className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+                      <AlertTriangle className="h-3 w-3" /> {data.locationDistance}m — Info jarak
+                    </span>
+                  )}
+                  {data.locationConfirmed && (
+                    <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                      <Check className="h-3 w-3" /> Dikonfirmasi manual
                     </span>
                   )}
                 </div>
+                {data.locationDistance !== null && !data.locationVerified && !data.locationConfirmed && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setData(prev => ({ ...prev, locationConfirmed: true }))}
+                    className="mt-2 text-xs border-amber-300 text-amber-700"
+                  >
+                    ✓ Saya sudah di toko
+                  </Button>
+                )}
                 {gpsError && <p className="text-xs text-red-500 mt-1">{gpsError}</p>}
                 {data.gpsLatitude && (
                   <p className="text-xs text-gray-400 mt-1">
@@ -760,15 +777,14 @@ function VisitForm() {
                 if (!store?.latitude || !store?.longitude) return null
                 return (
                   <div className="p-3 rounded-lg bg-gray-50 border border-gray-100 text-xs space-y-1">
-                    <p className="text-gray-500 font-medium">📍 Verifikasi Lokasi</p>
+                    <p className="text-gray-500 font-medium">📍 Informasi Lokasi</p>
                     <p className="text-gray-500">Toko: {store.name} ({store.latitude.toFixed(6)}, {store.longitude.toFixed(6)})</p>
                     {data.gpsLatitude && (
                       <p className="text-gray-500">GPS Anda: {data.gpsLatitude.toFixed(6)}, {data.gpsLongitude?.toFixed(6)}</p>
                     )}
                     {data.locationDistance !== null && (
-                      <p className={data.locationVerified ? 'text-emerald-600 font-medium' : 'text-red-600 font-medium'}>
-                        {data.locationVerified ? '✅' : '❌'} Jarak: {data.locationDistance}m dari toko
-                        {data.locationVerified ? ' (sesuai ≤80m)' : ' (terlalu jauh)'}
+                      <p className="text-gray-600 font-medium">
+                        📏 Jarak: {data.locationDistance}m dari toko
                       </p>
                     )}
                     <a href={`https://www.google.com/maps?q=${store.latitude},${store.longitude}`}
