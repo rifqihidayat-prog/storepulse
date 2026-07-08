@@ -99,6 +99,32 @@ export async function DELETE(request: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 
+  // Cek apakah user masih memiliki visit sebagai supervisor
+  const { count: supervisorCount, error: countError } = await supabaseAdmin
+    .from('visits')
+    .select('*', { count: 'exact', head: true })
+    .eq('supervisor_id', id)
+
+  if (countError) {
+    return NextResponse.json({ error: countError.message }, { status: 400 })
+  }
+
+  if (supervisorCount && supervisorCount > 0) {
+    return NextResponse.json({
+      error: `Supervisor ini memiliki ${supervisorCount} kunjungan. Pindahkan kunjungan ke supervisor lain sebelum menghapus.`
+    }, { status: 400 })
+  }
+
+  // Lepas relasi manager (nullable, bisa di-set NULL)
+  const { error: managerUpdateError } = await supabaseAdmin
+    .from('visits')
+    .update({ manager_id: null })
+    .eq('manager_id', id)
+
+  if (managerUpdateError) {
+    return NextResponse.json({ error: managerUpdateError.message }, { status: 400 })
+  }
+
   const { error: profileError } = await supabaseAdmin.from('profiles').delete().eq('id', id)
   if (profileError) {
     return NextResponse.json({ error: profileError.message }, { status: 400 })
