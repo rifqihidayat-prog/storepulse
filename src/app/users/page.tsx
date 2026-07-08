@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Users, Plus, Trash2, UserCog, Pencil, Upload, Pen, Store } from 'lucide-react'
+import { Users, Plus, Trash2, UserCog, Pencil, Upload, Pen, Store, Eye, EyeOff } from 'lucide-react'
 import { SignaturePad } from '@/components/signature-pad'
 import type { Profile, Store as StoreType } from '@/types'
 
@@ -18,6 +18,7 @@ export default function UsersPage() {
   const [showForm, setShowForm] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [name, setName] = useState('')
   const [role, setRole] = useState<'supervisor' | 'manager' | 'staff'>('supervisor')
   const [saving, setSaving] = useState(false)
@@ -223,7 +224,12 @@ export default function UsersPage() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-gray-500">Password</label>
-                    <Input type="password" placeholder="Min 6 karakter" value={password} onChange={e => setPassword(e.target.value)} required />
+                    <div className="relative">
+                      <Input type={showPassword ? 'text' : 'password'} placeholder="Min 6 karakter" value={password} onChange={e => setPassword(e.target.value)} required className="pr-10" />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-1">

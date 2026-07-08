@@ -94,10 +94,16 @@ function bodyText(text: string, options?: { bold?: boolean; size?: number }) {
   })
 }
 
-async function addPhoto(label: string, url: string | null | undefined, maxWidth = 400, maxHeight = 300, supabase?: any): Promise<Paragraph[]> {
+async function addPhoto(label: string, url: string | null | undefined, maxWidth = 400, maxHeight = 300, supabase?: any, cache?: Map<string, Uint8Array>): Promise<Paragraph[]> {
   if (!url) return []
   try {
-    const img = await imgBuffer(url, supabase)
+    let img: Uint8Array
+    if (cache?.has(url)) {
+      img = cache.get(url)!
+    } else {
+      img = await imgBuffer(url, supabase)
+      cache?.set(url, img)
+    }
     return [
       new Paragraph({ spacing: { before: 150 }, children: [new TextRun({ text: label, size: 20, font: 'Calibri', bold: true, color: '4B5563' })] }),
       new Paragraph({ children: [new ImageRun({ type: getImageType(url), data: img, transformation: { width: maxWidth, height: maxHeight } })] }),
@@ -111,6 +117,7 @@ async function addPhoto(label: string, url: string | null | undefined, maxWidth 
 export async function generateReport(data: ReportData, supabase?: any): Promise<Buffer> {
   const { visit, attendance, cashCheck, denominations, deposit, checklists, stockChecks, supervisions, briefing, chats, stockSep, manager } = data
   const sections: (Paragraph | Table)[] = []
+  const photoCache = new Map<string, Uint8Array>()
 
   // ── KOP SURAT ──
   // Logo center + Judul center dalam tabel
@@ -207,7 +214,7 @@ export async function generateReport(data: ReportData, supabase?: any): Promise<
       sections.push(bodyText(`🔗 Buka di Google Maps: https://maps.google.com/maps?q=${attendance.latitude},${attendance.longitude}`))
     }
     sections.push(bodyText(`Status Lokasi: ${attendance.is_location_match ? 'Sesuai dengan toko (≤80m)' : 'Tidak sesuai'}`))
-    sections.push(...await addPhoto('Foto Selfie:', attendance.selfie_photo_url, 300, 250, supabase))
+    sections.push(...await addPhoto('Foto Selfie:', attendance.selfie_photo_url, 300, 250, supabase, photoCache))
   } else {
     sections.push(bodyText('Data absensi tidak tersedia'))
   }
@@ -250,7 +257,7 @@ export async function generateReport(data: ReportData, supabase?: any): Promise<
   if (deposit) {
     sections.push(bodyText(`Status: ${deposit.has_pending ? 'Ada Pending' : 'Clear / Tidak Ada Pending'}`))
     if (deposit.note) sections.push(bodyText(`Catatan: ${deposit.note}`))
-    sections.push(...await addPhoto('Foto Form Setoran:', deposit.photo_url, 350, 250, supabase))
+    sections.push(...await addPhoto('Foto Form Setoran:', deposit.photo_url, 350, 250, supabase, photoCache))
   } else {
     sections.push(bodyText('Data tidak tersedia'))
   }
@@ -268,12 +275,18 @@ export async function generateReport(data: ReportData, supabase?: any): Promise<
     for (const [area, items] of Object.entries(areaGroups)) {
       if (items.length === 0) continue
       sections.push(bodyText(`\n${areaLabels[area]}:`, { bold: true, size: 22 }))
+      const photoItems = items.filter(c => c.photo_url)
+      const photoParagraphs = photoItems.length > 0
+        ? await Promise.all(photoItems.map(c => addPhoto(`   Foto:`, c.photo_url, 300, 200, supabase, photoCache)))
+        : []
+      let photoIdx = 0
       for (let i = 0; i < items.length; i++) {
         const c = items[i]
         sections.push(bodyText(`${i + 1}. ${c.item_name} — ${c.status === 'baik' ? 'Baik' : c.status === 'kurang' ? 'Kurang' : 'Buruk'}`, { size: 20 }))
         if (c.note) sections.push(bodyText(`   Catatan: ${c.note}`, { size: 20 }))
         if (c.photo_url) {
-          sections.push(...await addPhoto(`   Foto:`, c.photo_url, 300, 200, supabase))
+          sections.push(...photoParagraphs[photoIdx])
+          photoIdx++
         }
       }
     }
@@ -299,8 +312,11 @@ export async function generateReport(data: ReportData, supabase?: any): Promise<
         width: { size: 100, type: WidthType.PERCENTAGE },
       })
     )
-    for (const c of chats) {
-      sections.push(...await addPhoto(`Foto ${c.marketplace === 'tiktok' ? 'TikTok' : 'Shopee'}:`, c.photo_url, 350, 250, supabase))
+    const chatPhotoResults = await Promise.all(
+      chats.map(c => addPhoto(`Foto ${c.marketplace === 'tiktok' ? 'TikTok' : 'Shopee'}:`, c.photo_url, 350, 250, supabase, photoCache))
+    )
+    for (const result of chatPhotoResults) {
+      sections.push(...result)
     }
   } else {
     sections.push(bodyText('Data tidak tersedia'))
@@ -320,8 +336,11 @@ export async function generateReport(data: ReportData, supabase?: any): Promise<
       sections.push(bodyText(`Potensi Oversold: ${stockSep.oversold_items} item — ${ok ? '✅ Poin 3 (<5 item)' : '❌ Poin 0 (≥5 item)'}`))
     }
     if (stockSep.note) sections.push(bodyText(`Catatan: ${stockSep.note}`))
-    sections.push(...await addPhoto('Foto Item Bermasalah:', stockSep.photo_items_url, 350, 250, supabase))
-    sections.push(...await addPhoto('Foto Dashboard Stock Keeper:', stockSep.photo_dashboard_url, 350, 250, supabase))
+    const stockSepPhotos = await Promise.all([
+      addPhoto('Foto Item Bermasalah:', stockSep.photo_items_url, 350, 250, supabase, photoCache),
+      addPhoto('Foto Dashboard Stock Keeper:', stockSep.photo_dashboard_url, 350, 250, supabase, photoCache),
+    ])
+    sections.push(...stockSepPhotos.flat())
   } else {
     sections.push(bodyText('Data tidak tersedia'))
   }
@@ -363,10 +382,19 @@ export async function generateReport(data: ReportData, supabase?: any): Promise<
         width: { size: 100, type: WidthType.PERCENTAGE },
       })
     )
-    for (const s of supervisions) {
-      const cl = checklists.find(c => c.item_name === s.checklist_item_name && c.area === s.area)
-      if (cl?.note) sections.push(bodyText(`Catatan SPV untuk "${s.checklist_item_name}": ${cl.note}`))
-      if (cl?.photo_url) sections.push(...await addPhoto(`Foto ${s.checklist_item_name}:`, cl.photo_url, 300, 200, supabase))
+    const supPhotos = await Promise.all(
+      supervisions.map(s => {
+        const cl = checklists.find(c => c.item_name === s.checklist_item_name && c.area === s.area)
+        return { cl, s }
+      }).map(async ({ cl, s }) => {
+        const paragraphs: Paragraph[] = []
+        if (cl?.note) paragraphs.push(bodyText(`Catatan SPV untuk "${s.checklist_item_name}": ${cl.note}`))
+        if (cl?.photo_url) paragraphs.push(...await addPhoto(`Foto ${s.checklist_item_name}:`, cl.photo_url, 300, 200, supabase, photoCache))
+        return paragraphs
+      })
+    )
+    for (const p of supPhotos) {
+      sections.push(...p)
     }
   } else {
     sections.push(bodyText('Tidak ada item supervisi'))
@@ -376,7 +404,7 @@ export async function generateReport(data: ReportData, supabase?: any): Promise<
   sections.push(sectionTitle('J. Briefing Flow Kerja'))
   if (briefing) {
     if (briefing.note) sections.push(bodyText(`Catatan: ${briefing.note}`))
-    sections.push(...await addPhoto('Foto Briefing:', briefing.photo_url, 350, 250, supabase))
+    sections.push(...await addPhoto('Foto Briefing:', briefing.photo_url, 350, 250, supabase, photoCache))
   } else {
     sections.push(bodyText('Data tidak tersedia'))
   }

@@ -41,7 +41,7 @@ export function NavBar() {
   const allLinks = [
     { href: '/dashboard', label: 'Dashboard', icon: ClipboardList, roles: ['supervisor', 'manager'] },
     { href: '/visit/new', label: 'Kunjungan Baru', icon: FileText, roles: ['supervisor', 'manager'] },
-    { href: '/stores', label: 'Data Toko', icon: Building2, roles: ['supervisor', 'manager'] },
+    { href: '/stores', label: 'Data Toko', icon: Building2, roles: ['manager'] },
     { href: '/follow-up', label: 'Follow-Up', icon: CheckCircle, roles: ['supervisor', 'manager'] },
     { href: '/users', label: 'Kelola User', icon: Users, roles: ['manager'] },
     { href: '/staff/follow-up', label: 'Follow-Up', icon: CheckCircle, roles: ['staff'] },

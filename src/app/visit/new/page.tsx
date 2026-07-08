@@ -352,14 +352,16 @@ function VisitForm() {
       let vid: string
       if (isEditMode && editVisitId) {
         vid = editVisitId
-        // Upload all photos first, then send everything to API (bypass RLS)
-        const selfieUrl = await uploadPhoto(data.selfiePhoto, `${vid}/selfie`)
-        const dpUrl = await uploadPhoto(data.depositPhoto, `${vid}/deposit`)
-        const bUrl = await uploadPhoto(data.briefingPhoto, `${vid}/briefing`)
-        const ttUrl = await uploadPhoto(data.tiktokPhoto, `${vid}/tiktok`)
-        const spUrl = await uploadPhoto(data.shopeePhoto, `${vid}/shopee`)
-        const ssItemsUrl = await uploadPhoto(data.stockSepPhotoItems, `${vid}/stock-sep-items`)
-        const ssDashUrl = await uploadPhoto(data.stockSepPhotoDashboard, `${vid}/stock-sep-dash`)
+        // Upload all photos in parallel
+        const [selfieUrl, dpUrl, bUrl, ttUrl, spUrl, ssItemsUrl, ssDashUrl] = await Promise.all([
+          uploadPhoto(data.selfiePhoto, `${vid}/selfie`),
+          uploadPhoto(data.depositPhoto, `${vid}/deposit`),
+          uploadPhoto(data.briefingPhoto, `${vid}/briefing`),
+          uploadPhoto(data.tiktokPhoto, `${vid}/tiktok`),
+          uploadPhoto(data.shopeePhoto, `${vid}/shopee`),
+          uploadPhoto(data.stockSepPhotoItems, `${vid}/stock-sep-items`),
+          uploadPhoto(data.stockSepPhotoDashboard, `${vid}/stock-sep-dash`),
+        ])
 
         const clUrls = await Promise.all(data.checklist.map((c, i) => uploadPhoto(c.photo, `${vid}/checklist-${i}`)))
 
@@ -433,131 +435,120 @@ function VisitForm() {
       if (visitErr || !visit) throw visitErr || new Error('Gagal membuat kunjungan')
       vid = visit.id
 
-      // 1. Attendance
-      if (data.selfiePhoto) {
-        const url = await uploadPhoto(data.selfiePhoto, `${vid}/selfie`)
-        if (url) {
-          await supabase.from('visit_attendance').insert({
-            visit_id: vid, selfie_photo_url: url,
-            latitude: data.gpsLatitude, longitude: data.gpsLongitude,
-            device_type: data.deviceType, is_location_match: data.locationVerified,
-          })
-        }
-      }
+      // === Upload ALL photos in parallel ===
+      const [selfieUrl, dpUrl, bUrl, ttUrl, spUrl, ssItemsUrl, ssDashUrl, ...clPhotoUrls] = await Promise.all([
+        uploadPhoto(data.selfiePhoto, `${vid}/selfie`),
+        uploadPhoto(data.depositPhoto, `${vid}/deposit`),
+        uploadPhoto(data.briefingPhoto, `${vid}/briefing`),
+        uploadPhoto(data.tiktokPhoto, `${vid}/tiktok`),
+        uploadPhoto(data.shopeePhoto, `${vid}/shopee`),
+        uploadPhoto(data.stockSepPhotoItems, `${vid}/stock-sep-items`),
+        uploadPhoto(data.stockSepPhotoDashboard, `${vid}/stock-sep-dash`),
+        ...data.checklist.map((c, i) => uploadPhoto(c.photo, `${vid}/checklist-${i}`)),
+      ])
 
-      // 2. Cash Denominations
-      const nonZeroDenoms = data.denominations.filter(d => d.quantity > 0)
-      if (nonZeroDenoms.length > 0) {
-        await supabase.from('visit_cash_denominations').insert(
-          nonZeroDenoms.map(d => ({ visit_id: vid, denomination: d.value, quantity: d.quantity, type: d.type }))
-        )
-      }
-
-      // 3. Cash Check
+      // === Insert ALL records in parallel ===
       const modal = parseInt(data.initialCapital) || 0
       const petty = parseInt(data.pettyCashBalance) || 0
       const denomTotal = data.denominations.reduce((sum, d) => sum + d.value * d.quantity, 0)
       const claimAmt = data.hasPendingClaim ? (parseInt(data.pendingClaimAmount) || 0) : 0
       const cashMatch = modal + petty > 0 && (denomTotal + claimAmt) === modal + petty
-      await supabase.from('visit_cash_checks').insert({
-        visit_id: vid,
-        initial_capital: modal || null,
-        petty_cash_balance: petty || null,
-        cashier_is_match: cashMatch,
-        petty_cash_is_match: cashMatch,
-        has_pending_claim: data.hasPendingClaim,
-        pending_claim_amount: parseInt(data.pendingClaimAmount) || 0,
-        note: data.cashNote || null,
-      })
 
-      // 4. Deposit
-      const dpUrl = await uploadPhoto(data.depositPhoto, `${vid}/deposit`)
-      await supabase.from('visit_deposits').insert({
-        visit_id: vid, has_pending: data.hasPending, photo_url: dpUrl, note: data.depositNote || null,
-      })
+      await Promise.all([
+        // 1. Attendance
+        selfieUrl ? supabase.from('visit_attendance').insert({
+          visit_id: vid, selfie_photo_url: selfieUrl,
+          latitude: data.gpsLatitude, longitude: data.gpsLongitude,
+          device_type: data.deviceType, is_location_match: data.locationVerified,
+        }) : Promise.resolve(null),
 
-      // 5. Checklist
-      const clPhotoUrls = await Promise.all(data.checklist.map((c, i) => uploadPhoto(c.photo, `${vid}/checklist-${i}`)))
-      await supabase.from('visit_checklists').insert(
-        data.checklist.map((c, i) => ({ visit_id: vid, item_name: c.item_name, status: c.status, note: c.note || null, photo_url: clPhotoUrls[i], area: c.area }))
-      )
+        // 2. Cash Denominations
+        data.denominations.filter(d => d.quantity > 0).length > 0
+          ? supabase.from('visit_cash_denominations').insert(
+              data.denominations.filter(d => d.quantity > 0).map(d => ({ visit_id: vid, denomination: d.value, quantity: d.quantity, type: d.type }))
+            )
+          : Promise.resolve(null),
 
-      // 6. Stock Checks
-      await supabase.from('visit_stock_checks').insert(
-        data.stockChecks.map(s => ({
-          visit_id: vid, item_name: s.item_name, system_stock: s.system_stock,
-          physical_stock: s.physical_stock, sold_stock: s.sold_stock, is_match: s.isMatch,
-        }))
-      )
+        // 3. Cash Check
+        supabase.from('visit_cash_checks').insert({
+          visit_id: vid, initial_capital: modal || null, petty_cash_balance: petty || null,
+          cashier_is_match: cashMatch, petty_cash_is_match: cashMatch,
+          has_pending_claim: data.hasPendingClaim,
+          pending_claim_amount: parseInt(data.pendingClaimAmount) || 0,
+          note: data.cashNote || null,
+        }),
 
-      // 7. Supervisions
-      if (data.supervisions.length > 0) {
-        await supabase.from('visit_supervisions').insert(
-          data.supervisions.map(s => ({
-            visit_id: vid,
-            checklist_item_name: s.item_name,
-            area: s.area,
-            deadline_date: s.deadline_date,
+        // 4. Deposit
+        supabase.from('visit_deposits').insert({
+          visit_id: vid, has_pending: data.hasPending, photo_url: dpUrl, note: data.depositNote || null,
+        }),
+
+        // 5. Checklists
+        data.checklist.length > 0
+          ? supabase.from('visit_checklists').insert(
+              data.checklist.map((c, i) => ({ visit_id: vid, item_name: c.item_name, status: c.status, note: c.note || null, photo_url: clPhotoUrls[i] || null, area: c.area }))
+            )
+          : Promise.resolve(null),
+
+        // 6. Stock Checks
+        supabase.from('visit_stock_checks').insert(
+          data.stockChecks.map(s => ({
+            visit_id: vid, item_name: s.item_name, system_stock: s.system_stock,
+            physical_stock: s.physical_stock, sold_stock: s.sold_stock, is_match: s.isMatch,
           }))
-        )
-      }
+        ),
 
-      // 8. Briefing
-      const bUrl = await uploadPhoto(data.briefingPhoto, `${vid}/briefing`)
-      await supabase.from('visit_briefings').insert({
-        visit_id: vid, photo_url: bUrl, note: data.briefingNote || null,
-      })
+        // 7. Supervisions
+        data.supervisions.length > 0
+          ? supabase.from('visit_supervisions').insert(
+              data.supervisions.map(s => ({ visit_id: vid, checklist_item_name: s.item_name, area: s.area, deadline_date: s.deadline_date }))
+            )
+          : Promise.resolve(null),
 
-      // 10. Chat Marketplace
-      if (data.tiktokPercentage !== null) {
-        const ttUrl = await uploadPhoto(data.tiktokPhoto, `${vid}/tiktok`)
-        await supabase.from('visit_chat_marketplace').insert({
-          visit_id: vid, marketplace: 'tiktok', percentage: data.tiktokPercentage, photo_url: ttUrl,
-        })
-      }
-      if (data.shopeePercentage !== null) {
-        const spUrl = await uploadPhoto(data.shopeePhoto, `${vid}/shopee`)
-        await supabase.from('visit_chat_marketplace').insert({
-          visit_id: vid, marketplace: 'shopee', percentage: data.shopeePercentage, photo_url: spUrl,
-        })
-      }
+        // 8. Briefing
+        supabase.from('visit_briefings').insert({
+          visit_id: vid, photo_url: bUrl, note: data.briefingNote || null,
+        }),
 
-      // 11. Stock Separation
-      if (data.stockSeparation) {
-        const ssItemsUrl = await uploadPhoto(data.stockSepPhotoItems, `${vid}/stock-sep-items`)
-        const ssDashUrl = await uploadPhoto(data.stockSepPhotoDashboard, `${vid}/stock-sep-dash`)
-        const sepRes = await fetch('/api/stock-separation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            visit_id: vid, status: data.stockSeparation,
-            imbalance_percentage: data.stockSepImbalance,
-            oversold_items: data.stockSepOversold,
-            photo_items_url: ssItemsUrl, photo_dashboard_url: ssDashUrl,
-            note: data.stockSepNote || null,
-          }),
-        })
-        const sepData = await sepRes.json()
-        if (!sepRes.ok) throw new Error('Gagal simpan stok online: ' + (sepData?.error || JSON.stringify(sepData)))
-      }
+        // 9. TikTok Chat
+        data.tiktokPercentage !== null
+          ? supabase.from('visit_chat_marketplace').insert({
+              visit_id: vid, marketplace: 'tiktok', percentage: data.tiktokPercentage, photo_url: ttUrl,
+            })
+          : Promise.resolve(null),
 
-      // 12. Update score & status
-      const scores = calculateScore(data)
-      if (isEditMode && editVisitId) {
-        await supabase.from('visits').update({
-          store_id: data.storeId,
-          visit_date: data.visitDate,
-          status: 'submitted',
-          review_notes: data.reviewNotes || null,
-          total_score: scores.total,
-        }).eq('id', vid)
-      } else {
-        await supabase.from('visits').update({
-          status: 'submitted',
-          review_notes: data.reviewNotes || null,
-          total_score: scores.total,
-        }).eq('id', vid)
-      }
+        // 10. Shopee Chat
+        data.shopeePercentage !== null
+          ? supabase.from('visit_chat_marketplace').insert({
+              visit_id: vid, marketplace: 'shopee', percentage: data.shopeePercentage, photo_url: spUrl,
+            })
+          : Promise.resolve(null),
+
+        // 11. Stock Separation
+        data.stockSeparation
+          ? fetch('/api/stock-separation', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                visit_id: vid, status: data.stockSeparation,
+                imbalance_percentage: data.stockSepImbalance,
+                oversold_items: data.stockSepOversold,
+                photo_items_url: ssItemsUrl, photo_dashboard_url: ssDashUrl,
+                note: data.stockSepNote || null,
+              }),
+            })
+          : Promise.resolve(null),
+
+        // 12. Update score & status
+        (async () => {
+          const scores = calculateScore(data)
+          const { error: updateErr } = await supabase.from('visits').update({
+            status: 'submitted', review_notes: data.reviewNotes || null,
+            total_score: scores.total,
+          }).eq('id', vid)
+          if (updateErr) console.error('[Visit] Gagal update score:', updateErr.message)
+        })(),
+      ])
 
       router.push(`/visit/${vid}`)
     } catch (err: any) {

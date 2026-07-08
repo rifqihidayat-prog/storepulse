@@ -44,12 +44,22 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect staff away from dashboard and other pages meant for supervisor/manager
-  if (user && (pathname === '/dashboard' || pathname === '/visit/new' || pathname === '/users' || pathname === '/stores')) {
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-    if (profile?.role === 'staff') {
-      const url = request.nextUrl.clone()
-      url.pathname = '/staff/follow-up'
-      return NextResponse.redirect(url)
+  // Also redirect supervisor away from /stores and /users
+  if (user) {
+    const blockedForStaff = ['/dashboard', '/visit/new', '/users', '/stores']
+    const blockedForSupervisor = ['/users', '/stores']
+    if (blockedForStaff.includes(pathname) || blockedForSupervisor.includes(pathname)) {
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+      if (profile?.role === 'staff') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/staff/follow-up'
+        return NextResponse.redirect(url)
+      }
+      if (profile?.role === 'supervisor' && blockedForSupervisor.includes(pathname)) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
     }
   }
 
