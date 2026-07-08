@@ -87,9 +87,24 @@ export default function UsersPage() {
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Hapus user "${name}"?`)) return
-    const supabase = createClient()
-    await supabase.from('profiles').delete().eq('id', id)
-    loadProfiles()
+    setError('')
+    setSuccess('')
+    try {
+      const res = await fetch('/api/users', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      const result = await res.json()
+      if (!res.ok) {
+        setError(result.error || 'Gagal menghapus user')
+        return
+      }
+      setSuccess(`User ${name} berhasil dihapus!`)
+      loadProfiles()
+    } catch (err: any) {
+      setError(err.message)
+    }
   }
 
   function startEdit(profile: Profile) {
