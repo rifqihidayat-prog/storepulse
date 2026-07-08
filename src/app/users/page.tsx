@@ -201,6 +201,13 @@ export default function UsersPage() {
           </Button>
         </div>
 
+        {error && !showForm && !editUser && (
+          <p className="text-sm text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>
+        )}
+        {success && !showForm && !editUser && (
+          <p className="text-sm text-emerald-600 bg-emerald-50 p-2 rounded-lg">{success}</p>
+        )}
+
         {showForm && (
           <Card className="border-emerald-100 shadow-sm">
             <CardContent className="pt-4 space-y-3">
