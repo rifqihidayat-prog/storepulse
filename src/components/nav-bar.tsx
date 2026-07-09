@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Store, ClipboardList, Users, LogOut, Menu, X, Building2, FileText, CheckCircle } from 'lucide-react'
+import { Store, ClipboardList, Users, LogOut, Menu, X, Building2, FileText, CheckCircle, PlayCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export function NavBar() {
@@ -41,6 +41,7 @@ export function NavBar() {
   const allLinks = [
     { href: '/dashboard', label: 'Dashboard', icon: ClipboardList, roles: ['supervisor', 'manager'] },
     { href: '/visit/new', label: 'Kunjungan Baru', icon: FileText, roles: ['supervisor', 'manager'] },
+    { href: '/demo', label: 'Demo', icon: PlayCircle, roles: ['manager'] },
     { href: '/stores', label: 'Data Toko', icon: Building2, roles: ['manager'] },
     { href: '/follow-up', label: 'Follow-Up', icon: CheckCircle, roles: ['supervisor', 'manager'] },
     { href: '/users', label: 'Kelola User', icon: Users, roles: ['manager'] },

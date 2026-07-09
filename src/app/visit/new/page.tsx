@@ -161,7 +161,7 @@ export default function NewVisitPage() {
   )
 }
 
-function VisitForm() {
+export function VisitForm({ demo }: { demo?: boolean }) {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [stores, setStores] = useState<Store[]>([])
@@ -190,9 +190,20 @@ function VisitForm() {
 
       const { data: stores } = await supabase.from('stores').select('*').order('name')
       setStores(stores || [])
+
+      if (demo && stores && stores.length > 0) {
+        setData(prev => ({
+          ...prev,
+          storeId: stores[0].id,
+          gpsLatitude: -6.302000,
+          gpsLongitude: 106.652200,
+          locationVerified: true,
+          locationDistance: 15,
+        }))
+      }
     }
     init()
-  }, [router])
+  }, [router, demo])
 
   function update<T>(key: string, value: T) {
     setData(prev => ({ ...prev, [key]: value }))
@@ -292,6 +303,7 @@ function VisitForm() {
   const progress = (step / STEPS.length) * 100
 
   const canProceed = () => {
+    if (demo) return true
     if (step === 1) return data.storeId && data.selfiePhoto && (data.locationVerified || data.locationConfirmed || userRole === 'manager')
     if (step === 2) {
       const modal = parseInt(data.initialCapital) || 0
@@ -345,6 +357,15 @@ function VisitForm() {
 
   async function handleSubmit() {
     if (submitting) return
+
+    // Demo mode: just redirect with a success message
+    if (demo) {
+      setSubmitting(true)
+      alert('✅ Demo selesai! Aplikasi siap digunakan.')
+      router.push('/dashboard')
+      return
+    }
+
     setSubmitting(true)
     const supabase = createClient()
 
@@ -647,7 +668,7 @@ function VisitForm() {
         {/* Sticky header */}
         <div className="sticky top-0 z-10 bg-gradient-to-br from-emerald-50 to-white pb-3 space-y-3">
           <div className="flex items-center gap-3 pt-2">
-            <h1 className="text-xl font-bold text-emerald-900">{isEditMode ? 'Edit Laporan' : 'Kunjungan Baru'}</h1>
+            <h1 className="text-xl font-bold text-emerald-900">{demo ? 'Demo Kunjungan' : isEditMode ? 'Edit Laporan' : 'Kunjungan Baru'}</h1>
             <Badge variant="outline">{STEPS.find(s => s.id === step)?.label} ({step}/{STEPS.length})</Badge>
           </div>
 
@@ -718,32 +739,40 @@ function VisitForm() {
                   <MapPin className="h-4 w-4 text-emerald-600" /> 📍 Lokasi GPS
                 </Label>
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={getLocation}
-                    disabled={gpsLoading || !data.storeId}
-                    className="border-emerald-200"
-                  >
-                    {gpsLoading ? 'Mendeteksi...' : '📍 Ambil Lokasi Saya'}
-                  </Button>
-                  {data.locationVerified && (
+                  {demo ? (
                     <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
-                      <Check className="h-3 w-3" /> {data.locationDistance}m — Sesuai
+                      <Check className="h-3 w-3" /> Demo — {data.locationDistance}m (simulasi)
                     </span>
-                  )}
-                  {data.locationDistance !== null && !data.locationVerified && !data.locationConfirmed && (
-                    <span className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
-                      <AlertTriangle className="h-3 w-3" /> {data.locationDistance}m — Info jarak
-                    </span>
-                  )}
-                  {data.locationConfirmed && (
-                    <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
-                      <Check className="h-3 w-3" /> Dikonfirmasi manual
-                    </span>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={getLocation}
+                        disabled={gpsLoading || !data.storeId}
+                        className="border-emerald-200"
+                      >
+                        {gpsLoading ? 'Mendeteksi...' : '📍 Ambil Lokasi Saya'}
+                      </Button>
+                      {data.locationVerified && (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                          <Check className="h-3 w-3" /> {data.locationDistance}m — Sesuai
+                        </span>
+                      )}
+                      {data.locationDistance !== null && !data.locationVerified && !data.locationConfirmed && (
+                        <span className="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+                          <AlertTriangle className="h-3 w-3" /> {data.locationDistance}m — Info jarak
+                        </span>
+                      )}
+                      {data.locationConfirmed && (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
+                          <Check className="h-3 w-3" /> Dikonfirmasi manual
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
-                {data.locationDistance !== null && !data.locationVerified && !data.locationConfirmed && (
+                {!demo && data.locationDistance !== null && !data.locationVerified && !data.locationConfirmed && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -793,40 +822,48 @@ function VisitForm() {
                 <Label className="text-emerald-800 flex items-center gap-1.5 mb-2">
                   <Camera className="h-4 w-4 text-emerald-600" /> Selfie di Toko
                 </Label>
-                {typeof data.selfiePhoto === 'string' && (
-                  <img src={data.selfiePhoto} alt="Selfie" className="w-full h-48 object-cover rounded-lg border border-gray-200 mb-2" />
-                )}
-                {data.deviceType === 'mobile' ? (
-                  <div>
-                    <input
-                      ref={selfieRef}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={e => update('selfiePhoto', e.target.files?.[0] || null)}
-                      className="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
-                    />
-                    <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                      <Smartphone className="h-3 w-3" /> Mode HP — kamera akan terbuka otomatis
-                    </p>
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={e => update('selfiePhoto', e.target.files?.[0] || null)}
-                      className="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
-                    />
-                    <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                      <Monitor className="h-3 w-3" /> Akses via Laptop — pilih file foto
-                    </p>
-                  </div>
-                )}
-                {data.selfiePhoto && typeof data.selfiePhoto !== 'string' && (
-                  <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                    <Check className="h-3 w-3" /> {(data.selfiePhoto as File).name || 'Foto terpilih'}
+                {demo ? (
+                  <p className="text-sm text-gray-400 bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
+                    📸 Foto selfie tidak diperlukan dalam mode demo
                   </p>
+                ) : (
+                  <>
+                    {typeof data.selfiePhoto === 'string' && (
+                      <img src={data.selfiePhoto} alt="Selfie" className="w-full h-48 object-cover rounded-lg border border-gray-200 mb-2" />
+                    )}
+                    {data.deviceType === 'mobile' ? (
+                      <div>
+                        <input
+                          ref={selfieRef}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={e => update('selfiePhoto', e.target.files?.[0] || null)}
+                          className="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                        />
+                        <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                          <Smartphone className="h-3 w-3" /> Mode HP — kamera akan terbuka otomatis
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => update('selfiePhoto', e.target.files?.[0] || null)}
+                          className="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+                        />
+                        <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                          <Monitor className="h-3 w-3" /> Akses via Laptop — pilih file foto
+                        </p>
+                      </div>
+                    )}
+                    {data.selfiePhoto && typeof data.selfiePhoto !== 'string' && (
+                      <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                        <Check className="h-3 w-3" /> {(data.selfiePhoto as File).name || 'Foto terpilih'}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </CardContent>
@@ -959,8 +996,12 @@ function VisitForm() {
                 {typeof data.depositPhoto === 'string' && (
                   <img src={data.depositPhoto} alt="Setoran" className="w-full h-32 object-cover rounded-lg border border-gray-200 mb-2" />
                 )}
-                <input type="file" accept="image/*" capture="environment" onChange={e => update('depositPhoto', e.target.files?.[0] || null)}
-                  className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" />
+                {demo ? (
+                  <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded border border-dashed border-gray-200">Demo — foto tidak diperlukan</p>
+                ) : (
+                  <input type="file" accept="image/*" capture="environment" onChange={e => update('depositPhoto', e.target.files?.[0] || null)}
+                    className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100" />
+                )}
               </div>
               <div className="space-y-1">
                 <Label className="text-emerald-800">Catatan <span className="text-red-400">*</span></Label>
@@ -1063,10 +1104,14 @@ function VisitForm() {
                                 {typeof ci?.photo === 'string' && (
                                   <img src={ci.photo as string} alt="Checklist" className="w-full h-20 object-cover rounded-lg border border-gray-200 mb-1" />
                                 )}
-                                <div className={`${!photoFilled ? 'p-1.5 rounded border border-dashed border-red-300 bg-red-50/50' : ''}`}>
-                                  <input type="file" accept="image/*" capture="environment" onChange={e => handleChecklistPhotoChange(globalIdx, e.target.files?.[0] || null)}
-                                    className="block w-full text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-emerald-50 file:text-emerald-700" />
-                                </div>
+                                {demo ? (
+                                  <p className="text-xs text-gray-400 bg-gray-50 p-1.5 rounded border border-dashed border-gray-200">Demo — skip</p>
+                                ) : (
+                                  <div className={`${!photoFilled ? 'p-1.5 rounded border border-dashed border-red-300 bg-red-50/50' : ''}`}>
+                                    <input type="file" accept="image/*" capture="environment" onChange={e => handleChecklistPhotoChange(globalIdx, e.target.files?.[0] || null)}
+                                      className="block w-full text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1109,8 +1154,12 @@ function VisitForm() {
                     {typeof data.tiktokPhoto === 'string' && (
                       <img src={data.tiktokPhoto} alt="TikTok" className="w-full h-24 object-cover rounded-lg border border-gray-200 mb-2" />
                     )}
-                    <input type="file" accept="image/*" capture="environment" onChange={e => update('tiktokPhoto', e.target.files?.[0] || null)}
-                      className="block w-full text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                    {demo ? (
+                      <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded border border-dashed border-gray-200">Demo — foto tidak diperlukan</p>
+                    ) : (
+                      <input type="file" accept="image/*" capture="environment" onChange={e => update('tiktokPhoto', e.target.files?.[0] || null)}
+                        className="block w-full text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -1137,8 +1186,12 @@ function VisitForm() {
                     {typeof data.shopeePhoto === 'string' && (
                       <img src={data.shopeePhoto} alt="Shopee" className="w-full h-24 object-cover rounded-lg border border-gray-200 mb-2" />
                     )}
-                    <input type="file" accept="image/*" capture="environment" onChange={e => update('shopeePhoto', e.target.files?.[0] || null)}
-                      className="block w-full text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-orange-50 file:text-orange-700" />
+                    {demo ? (
+                      <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded border border-dashed border-gray-200">Demo — foto tidak diperlukan</p>
+                    ) : (
+                      <input type="file" accept="image/*" capture="environment" onChange={e => update('shopeePhoto', e.target.files?.[0] || null)}
+                        className="block w-full text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-orange-50 file:text-orange-700" />
+                    )}
                   </div>
                 </div>
               </div>
@@ -1194,16 +1247,24 @@ function VisitForm() {
                 {typeof data.stockSepPhotoItems === 'string' && (
                   <img src={data.stockSepPhotoItems} alt="Item bermasalah" className="w-full h-32 object-cover rounded-lg border border-gray-200 mb-2" />
                 )}
-                <input type="file" accept="image/*" capture="environment" onChange={e => update('stockSepPhotoItems', e.target.files?.[0] || null)}
-                  className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                {demo ? (
+                  <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded border border-dashed border-gray-200">Demo — foto tidak diperlukan</p>
+                ) : (
+                  <input type="file" accept="image/*" capture="environment" onChange={e => update('stockSepPhotoItems', e.target.files?.[0] || null)}
+                    className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                )}
               </div>
               <div className="space-y-1">
                 <Label className="text-emerald-800">Foto Dashboard Stock Keeper</Label>
                 {typeof data.stockSepPhotoDashboard === 'string' && (
                   <img src={data.stockSepPhotoDashboard} alt="Dashboard" className="w-full h-32 object-cover rounded-lg border border-gray-200 mb-2" />
                 )}
-                <input type="file" accept="image/*" capture="environment" onChange={e => update('stockSepPhotoDashboard', e.target.files?.[0] || null)}
-                  className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                {demo ? (
+                  <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded border border-dashed border-gray-200">Demo — foto tidak diperlukan</p>
+                ) : (
+                  <input type="file" accept="image/*" capture="environment" onChange={e => update('stockSepPhotoDashboard', e.target.files?.[0] || null)}
+                    className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                )}
               </div>
               <div className="space-y-1">
                 <Label className="text-emerald-800">Catatan <span className="text-red-400">*</span></Label>
@@ -1338,8 +1399,12 @@ function VisitForm() {
                 {typeof data.briefingPhoto === 'string' && (
                   <img src={data.briefingPhoto} alt="Briefing" className="w-full h-32 object-cover rounded-lg border border-gray-200 mb-2" />
                 )}
-                <input type="file" accept="image/*" capture="environment" onChange={e => update('briefingPhoto', e.target.files?.[0] || null)}
-                  className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                {demo ? (
+                  <p className="text-xs text-gray-400 bg-gray-50 p-2 rounded border border-dashed border-gray-200">Demo — foto tidak diperlukan</p>
+                ) : (
+                  <input type="file" accept="image/*" capture="environment" onChange={e => update('briefingPhoto', e.target.files?.[0] || null)}
+                    className="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700" />
+                )}
               </div>
               <div className="space-y-1">
                 <Label className="text-emerald-800">Catatan Briefing <span className="text-red-400">*</span></Label>
@@ -1425,8 +1490,8 @@ function VisitForm() {
             </Button>
           ) : (
             <Button onClick={handleSubmit} disabled={submitting}
-              className="bg-emerald-700 hover:bg-emerald-800">
-              {submitting ? 'Menyimpan...' : <><Save className="h-4 w-4" /> Simpan &amp; Selesai</>}
+              className={demo ? "bg-blue-600 hover:bg-blue-700" : "bg-emerald-700 hover:bg-emerald-800"}>
+              {demo ? '✅ Selesai Demo' : submitting ? 'Menyimpan...' : <><Save className="h-4 w-4" /> Simpan &amp; Selesai</>}
             </Button>
           )}
         </div>

@@ -46,7 +46,7 @@ export async function updateSession(request: NextRequest) {
   // Redirect staff away from dashboard and other pages meant for supervisor/manager
   // Also redirect supervisor away from /stores and /users
   if (user) {
-    const blockedForStaff = ['/dashboard', '/visit/new', '/users', '/stores']
+    const blockedForStaff = ['/dashboard', '/visit/new', '/users', '/stores', '/demo']
     const blockedForSupervisor = ['/users', '/stores']
     if (blockedForStaff.includes(pathname) || blockedForSupervisor.includes(pathname)) {
       const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
