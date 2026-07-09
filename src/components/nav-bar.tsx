@@ -6,23 +6,30 @@ import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { Store, ClipboardList, Users, LogOut, Menu, X, Building2, FileText, CheckCircle, PlayCircle } from 'lucide-react'
+import { Store, ClipboardList, Users, LogOut, Menu, X, Building2, FileText, CheckCircle, PlayCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+
+// Module-level cache agar NavBar tidak re-fetch user role tiap navigasi
+let _cachedRole: string | null | undefined = undefined
+let _cachedName: string | null | undefined = undefined
 
 export function NavBar() {
   const pathname = usePathname()
   const router = useRouter()
-  const [userRole, setUserRole] = useState<string | null>(null)
-  const [userName, setUserName] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<string | null>(_cachedRole ?? null)
+  const [userName, setUserName] = useState<string | null>(_cachedName ?? null)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
+    if (_cachedRole !== undefined && _cachedName !== undefined) return
     async function load() {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
         if (data) {
+          _cachedRole = data.role
+          _cachedName = data.name
           setUserRole(data.role)
           setUserName(data.name)
         }
