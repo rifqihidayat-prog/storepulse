@@ -19,6 +19,7 @@ import {
   MapPin, Smartphone, Monitor, AlertTriangle, X, ShoppingBag
 } from 'lucide-react'
 import type { Store, ScoreBreakdown, CashDenomination } from '@/types'
+import { compressImage } from '@/lib/compress-image'
 
 const STEPS = [
   { id: 1, label: 'Absen & Toko', icon: Camera },
@@ -329,6 +330,7 @@ export function VisitForm({ demo }: { demo?: boolean }) {
   }
 
   async function uploadFile(file: File, path: string): Promise<string | null> {
+    const compressed = await compressImage(file)
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => {
@@ -336,16 +338,15 @@ export function VisitForm({ demo }: { demo?: boolean }) {
         resolve(result.split(',')[1])
       }
       reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(file)
+      reader.readAsDataURL(compressed)
     })
-    const ext = file.name.split('.').pop() || 'png'
     const res = await fetch('/api/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base64, contentType: file.type || 'image/png', path: `${path}.${ext}` }),
+      body: JSON.stringify({ base64, contentType: 'image/jpeg', path: `${path}.jpg` }),
     })
-    const data = await res.json()
     if (!res.ok) return null
+    const data = await res.json()
     return data.url
   }
 
@@ -439,8 +440,13 @@ export function VisitForm({ demo }: { demo?: boolean }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
+        if (!res.ok) {
+          const text = await res.text()
+          let msg = 'Gagal update kunjungan'
+          try { const j = JSON.parse(text); msg = j.error || msg } catch {}
+          throw new Error(msg)
+        }
         const result = await res.json()
-        if (!res.ok) throw new Error(result?.error || 'Gagal update kunjungan')
 
         router.push(`/visit/${vid}`)
         setSubmitting(false)

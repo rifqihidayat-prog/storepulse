@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Check, Camera, AlertTriangle, LogOut, Calendar, Clock, ChevronDown, ChevronUp, X } from 'lucide-react'
 import type { Supervision } from '@/types'
+import { compressImage } from '@/lib/compress-image'
 
 interface EnrichedSupervision extends Supervision {
   store_name?: string
@@ -117,6 +118,7 @@ export default function StaffFollowUpPage() {
 
     try {
       const evidenceFilesData = await Promise.all(evidenceFiles.map(async (file) => {
+        const compressed = await compressImage(file)
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
           reader.onload = () => {
@@ -124,9 +126,9 @@ export default function StaffFollowUpPage() {
             resolve(result.split(',')[1])
           }
           reader.onerror = () => reject(reader.error)
-          reader.readAsDataURL(file)
+          reader.readAsDataURL(compressed)
         })
-        return { base64, contentType: file.type || 'image/png' }
+        return { base64, contentType: 'image/jpeg' }
       }))
 
       const res = await fetch('/api/follow-up', {
@@ -139,8 +141,13 @@ export default function StaffFollowUpPage() {
         }),
       })
 
+      if (!res.ok) {
+        const text = await res.text()
+        let msg = 'Gagal'
+        try { const j = JSON.parse(text); msg = j.error || msg } catch {}
+        throw new Error(msg)
+      }
       const result = await res.json()
-      if (!res.ok) throw new Error(result.error || 'Gagal')
 
       setSupervisions(prev => prev.map(s => s.id === supId ? {
         ...s, status: 'completed', completed_at: new Date().toISOString(), completed_note: completedNote,
