@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
-    const { supervision_id, evidence_files, completed_note } = body
+    const { supervision_id, evidence_urls, completed_note } = body
 
     if (!supervision_id) {
       return NextResponse.json({ error: 'supervision_id wajib diisi' }, { status: 400 })
@@ -16,32 +16,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const evidenceUrls: string[] = []
-
-    if (evidence_files?.length) {
-      for (const file of evidence_files) {
-        const ext = (file.contentType || 'image/png').split('/')[1] || 'png'
-        const path = `follow-up/${supervision_id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from('visit-photos')
-          .upload(path, Buffer.from(file.base64, 'base64'), { contentType: file.contentType || 'image/png', upsert: true })
-        if (uploadErr) throw new Error('Gagal upload foto: ' + uploadErr.message)
-
-        const { data: { publicUrl } } = supabase.storage.from('visit-photos').getPublicUrl(path)
-        evidenceUrls.push(publicUrl)
-      }
-    }
-
     const updates: any = {
       status: 'completed',
       completed_at: new Date().toISOString(),
       completed_note: completed_note || null,
     }
-    if (evidenceUrls.length === 1) {
-      updates.evidence_photo_url = evidenceUrls[0]
+    if (evidence_urls?.length === 1) {
+      updates.evidence_photo_url = evidence_urls[0]
     }
-    if (evidenceUrls.length > 0) {
-      updates.evidence_photos = JSON.stringify(evidenceUrls)
+    if (evidence_urls?.length > 0) {
+      updates.evidence_photos = JSON.stringify(evidence_urls)
     }
 
     const { error: updateErr } = await supabase

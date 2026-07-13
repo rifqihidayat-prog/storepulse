@@ -331,23 +331,16 @@ export function VisitForm({ demo }: { demo?: boolean }) {
 
   async function uploadFile(file: File, path: string): Promise<string | null> {
     const compressed = await compressImage(file)
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const result = reader.result as string
-        resolve(result.split(',')[1])
-      }
-      reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(compressed)
-    })
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base64, contentType: 'image/jpeg', path: `${path}.jpg` }),
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.url
+    const supabase = createClient()
+    const storagePath = `${path}_${Date.now()}.jpg`
+    const { error: uploadErr } = await supabase.storage
+      .from('visit-photos')
+      .upload(storagePath, compressed, { contentType: 'image/jpeg' })
+    if (uploadErr) return null
+    const { data: { publicUrl } } = supabase.storage
+      .from('visit-photos')
+      .getPublicUrl(storagePath)
+    return publicUrl
   }
 
   async function uploadPhoto(photo: File | string | null, path: string): Promise<string | null> {

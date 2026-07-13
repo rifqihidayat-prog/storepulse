@@ -117,18 +117,18 @@ export default function StaffFollowUpPage() {
     setError('')
 
     try {
-      const evidenceFilesData = await Promise.all(evidenceFiles.map(async (file) => {
+      const supabase = createClient()
+      const evidenceUrls = await Promise.all(evidenceFiles.map(async (file, i) => {
         const compressed = await compressImage(file)
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const result = reader.result as string
-            resolve(result.split(',')[1])
-          }
-          reader.onerror = () => reject(reader.error)
-          reader.readAsDataURL(compressed)
-        })
-        return { base64, contentType: 'image/jpeg' }
+        const storagePath = `follow-up/${supId}/${Date.now()}-${i}.jpg`
+        const { error: uploadErr } = await supabase.storage
+          .from('visit-photos')
+          .upload(storagePath, compressed, { contentType: 'image/jpeg' })
+        if (uploadErr) throw new Error('Gagal upload foto: ' + uploadErr.message)
+        const { data: { publicUrl } } = supabase.storage
+          .from('visit-photos')
+          .getPublicUrl(storagePath)
+        return publicUrl
       }))
 
       const res = await fetch('/api/follow-up', {
@@ -136,7 +136,7 @@ export default function StaffFollowUpPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           supervision_id: supId,
-          evidence_files: evidenceFilesData,
+          evidence_urls: evidenceUrls,
           completed_note: completedNote || null,
         }),
       })
