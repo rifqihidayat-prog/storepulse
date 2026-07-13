@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
-import { Store, FileText, CheckCircle, Clock, Plus, Eye, TrendingUp, Building2, Filter } from 'lucide-react'
+import { Store, FileText, CheckCircle, Clock, Plus, Eye, TrendingUp, Building2, Filter, Trash2 } from 'lucide-react'
 import type { Visit, Store as StoreType, Profile } from '@/types'
 
 interface VisitWithStore extends Visit {
@@ -47,6 +47,8 @@ export default function DashboardPage() {
   const [filterMonth, setFilterMonth] = useState('')
   const [filterYear, setFilterYear] = useState('')
   const [filterSupervisor, setFilterSupervisor] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const hasFilter = filterMonth || filterYear || filterSupervisor
 
@@ -137,6 +139,20 @@ export default function DashboardPage() {
     setFilterMonth('')
     setFilterYear('')
     setFilterSupervisor('')
+  }
+
+  async function handleDelete(visitId: string) {
+    setDeleting(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('visits').delete().eq('id', visitId)
+    if (error) {
+      setDeleting(false)
+      setConfirmDeleteId(null)
+      return
+    }
+    setVisits(prev => prev.filter(v => v.id !== visitId))
+    setDeleting(false)
+    setConfirmDeleteId(null)
   }
 
   return (
@@ -328,6 +344,14 @@ export default function DashboardPage() {
                         {statusBadge(visit.status).label}
                       </Badge>
                       <Eye className="h-4 w-4 text-gray-300" />
+                      {userRole === 'manager' && (
+                        <button
+                          onClick={e => { e.preventDefault(); e.stopPropagation(); setConfirmDeleteId(visit.id) }}
+                          className="p-1 rounded-md hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </Link>
                 ))}
@@ -335,6 +359,23 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {confirmDeleteId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4">
+              <h3 className="text-lg font-semibold text-gray-900">Hapus Kunjungan</h3>
+              <p className="text-sm text-gray-500 mt-2">Yakin ingin menghapus kunjungan ini? Data tidak bisa dikembalikan.</p>
+              <div className="flex justify-end gap-3 mt-6">
+                <Button variant="outline" size="sm" onClick={() => setConfirmDeleteId(null)} disabled={deleting}>
+                  Batal
+                </Button>
+                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => handleDelete(confirmDeleteId)} disabled={deleting}>
+                  {deleting ? 'Menghapus...' : 'Ya, Hapus'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )
