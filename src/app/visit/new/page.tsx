@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import type { Store, ScoreBreakdown, CashDenomination } from '@/types'
 import { compressImage } from '@/lib/compress-image'
+import { saveDraft, loadDraft, clearDraft } from '@/lib/draft'
 
 const STEPS = [
   { id: 1, label: 'Absen & Toko', icon: Camera },
@@ -170,6 +171,7 @@ export function VisitForm({ demo }: { demo?: boolean }) {
   const [userRole, setUserRole] = useState('')
   const [data, setData] = useState<FormData>(emptyForm)
   const [submitting, setSubmitting] = useState(false)
+  const [draftAvailable, setDraftAvailable] = useState<{ step: number; updatedAt: string } | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
   const [gpsError, setGpsError] = useState('')
   const selfieRef = useRef<HTMLInputElement>(null)
@@ -205,6 +207,64 @@ export function VisitForm({ demo }: { demo?: boolean }) {
     }
     init()
   }, [router, demo])
+
+  // ── Auto-save draft ──
+  useEffect(() => {
+    if (demo) return
+    if (!data.storeId || data.storeId === emptyForm().storeId) return
+    const interval = setInterval(async () => {
+      await saveDraft({ data, step, updatedAt: new Date().toISOString() })
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [data, step, demo])
+
+  // Save draft on step change
+  const prevStepRef = useRef(step)
+  prevStepRef.current = step
+  useEffect(() => {
+    if (demo) return
+    if (!data.storeId || data.storeId === emptyForm().storeId) return
+    saveDraft({ data, step, updatedAt: new Date().toISOString() })
+  }, [step])
+
+  // Save draft on tab close
+  useEffect(() => {
+    if (demo) return
+    function handleVisibility() {
+      if (document.visibilityState === 'hidden') {
+        saveDraft({ data, step, updatedAt: new Date().toISOString() })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [data, step, demo])
+
+  // Check for existing draft on mount
+  useEffect(() => {
+    if (demo) return
+    ;(async () => {
+      const draft = await loadDraft() as any
+      if (draft && draft.data && draft.data.storeId) {
+        setDraftAvailable({ step: draft.step || 1, updatedAt: draft.updatedAt || '' })
+      }
+    })()
+  }, [demo])
+
+  function restoreDraft() {
+    ;(async () => {
+      const draft = await loadDraft() as any
+      if (draft && draft.data) {
+        setData(draft.data)
+        setStep(draft.step || 1)
+        setDraftAvailable(null)
+      }
+    })()
+  }
+
+  function discardDraft() {
+    clearDraft()
+    setDraftAvailable(null)
+  }
 
   function update<T>(key: string, value: T) {
     setData(prev => ({ ...prev, [key]: value }))
@@ -441,6 +501,7 @@ export function VisitForm({ demo }: { demo?: boolean }) {
         }
         const result = await res.json()
 
+        await clearDraft()
         router.push(`/visit/${vid}`)
         setSubmitting(false)
         return
@@ -570,6 +631,7 @@ export function VisitForm({ demo }: { demo?: boolean }) {
         })(),
       ])
 
+      await clearDraft()
       router.push(`/visit/${vid}`)
     } catch (err: any) {
       alert('Error: ' + err.message)
@@ -668,6 +730,24 @@ export function VisitForm({ demo }: { demo?: boolean }) {
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm text-blue-800 flex items-center gap-2">
             <span className="font-semibold">🎯 Mode Demo</span>
             <span className="text-blue-600">— Aplikasi dalam mode presentasi. Data tidak disimpan.</span>
+          </div>
+        )}
+        {draftAvailable && !demo && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm text-amber-800">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span>📋</span>
+                <span>Draft kunjungan ditemukan ({new Date(draftAvailable.updatedAt).toLocaleTimeString('id-ID')})</span>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={restoreDraft} className="px-3 py-1 rounded-md bg-amber-700 text-white text-xs font-medium hover:bg-amber-800 transition-colors">
+                  Lanjutkan
+                </button>
+                <button onClick={discardDraft} className="px-3 py-1 rounded-md border border-amber-300 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors">
+                  Hapus Draft
+                </button>
+              </div>
+            </div>
           </div>
         )}
         {/* Sticky header */}
